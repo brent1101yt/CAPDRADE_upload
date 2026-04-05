@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>歷屆會考成績紀錄器 | Notion Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 SheetJS 用於匯出 Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        notion: {
+                            bg: '#F7F7F5',
+                            card: '#FFFFFF',
+                            text: '#37352F',
+                            muted: '#787774',
+                            border: '#E9E9E7',
+                            hover: '#EFEFED',
+                            divider: '#EDEDEB',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Helvetica', '"Apple Color Emoji"', 'Arial', 'sans-serif', '"Segoe UI Emoji"', '"Segoe UI Symbol"'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #F7F7F5;
+            color: #37352F;
+        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        button { transition: all 0.2s ease; }
+        .modal-content::-webkit-scrollbar { width: 4px; }
+        .modal-content::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+    </style>
+</head>
+<body class="antialiased min-h-screen p-4 sm:p-8 pb-24">
+
+    <!-- 提示訊息框 -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 z-[60] flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span id="toast-message" class="text-sm">提示訊息</span>
+    </div>
+
+    <div class="max-w-4xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <header class="mb-6">
+            <h1 class="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 20H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                會考成績紀錄器
+            </h1>
+            <p class="text-notion-muted text-sm sm:text-base">記錄並分析您的歷次會考模擬與實戰成績。</p>
+        </header>
+
+        <!-- 弱點分析卡片 -->
+        <div class="bg-notion-card rounded-lg border border-notion-border p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+                <h2 class="text-base sm:text-lg font-semibold mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-notion-muted"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                    弱點分析
+                </h2>
+                <p class="text-notion-muted text-xs sm:text-sm">系統會自動計算各科平均積分，找出最需要補強的科目。</p>
+            </div>
+            <div class="bg-[#FBE4E4] text-[#C9352F] px-4 py-2 rounded-md font-medium text-sm border border-[#F4C5C5] whitespace-nowrap self-stretch sm:self-auto text-center">
+                需補強：<span id="weakness-subject">尚無資料</span>
+            </div>
+        </div>
+
+        <!-- 觸發新增的按鈕 -->
+        <button id="add-record-btn" onclick="openWizard()" class="w-full bg-[#2383E2] hover:bg-[#1A73CC] active:bg-[#155FA8] text-white p-4 rounded-lg font-medium flex items-center justify-center gap-2 shadow-sm text-lg transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            新增會考成績
+        </button>
+
+        <!-- 歷次紀錄表格卡片 -->
+        <div class="bg-notion-card rounded-lg border border-notion-border shadow-sm overflow-hidden">
+            <div class="p-4 sm:p-5 border-b border-notion-divider flex flex-wrap justify-between items-center bg-white gap-2">
+                <h2 class="text-base sm:text-lg font-semibold">歷次紀錄</h2>
+                <div class="flex items-center gap-2">
+                    <button onclick="exportToExcel()" class="text-[#2383E2] hover:text-[#1A73CC] text-xs sm:text-sm font-medium px-3 py-1.5 rounded border border-[#2383E2] hover:bg-blue-50 flex items-center gap-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        匯出 Excel
+                    </button>
+                    <button onclick="clearAllRecords()" class="text-notion-muted hover:text-red-600 text-xs sm:text-sm font-medium px-2 py-1.5 rounded hover:bg-red-50 flex items-center gap-1">
+                        清空紀錄
+                    </button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto no-scrollbar">
+                <table class="w-full text-left border-collapse min-w-[650px]">
+                    <thead>
+                        <tr class="bg-notion-bg text-notion-muted text-xs uppercase tracking-wider border-b border-notion-divider">
+                            <th class="p-3 sm:p-4 font-medium whitespace-nowrap">考試年份</th>
+                            <th class="p-3 sm:p-4 font-medium">國文</th>
+                            <th class="p-3 sm:p-4 font-medium">英文</th>
+                            <th class="p-3 sm:p-4 font-medium">數學</th>
+                            <th class="p-3 sm:p-4 font-medium">自然</th>
+                            <th class="p-3 sm:p-4 font-medium">社會</th>
+                            <th class="p-3 sm:p-4 font-medium whitespace-nowrap">總積分</th>
+                            <th class="p-3 sm:p-4 font-medium text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="records-table-body" class="text-sm divide-y divide-notion-divider">
+                        <!-- 由 JS 生成 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="empty-state" class="hidden flex-col items-center justify-center p-10 text-notion-muted">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mb-3 text-gray-300"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                <p class="text-sm">目前尚無任何成績紀錄</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 步驟化新增表單 Modal -->
+    <div id="wizard-modal" class="fixed inset-0 bg-black/50 hidden items-end sm:items-center justify-center z-50 transition-opacity">
+        <div class="bg-white w-full sm:w-[90%] sm:max-w-md sm:rounded-xl rounded-t-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] transform transition-transform duration-300 translate-y-full sm:translate-y-0" id="wizard-content">
+            
+            <div class="px-5 py-4 border-b border-notion-divider flex items-center justify-between bg-notion-bg shrink-0">
+                <div class="flex items-center gap-3">
+                    <button id="wizard-back-btn" onclick="wizardBack()" class="hidden text-notion-muted hover:text-notion-text p-1 rounded-md hover:bg-gray-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    </button>
+                    <h3 id="wizard-title" class="text-lg font-bold text-gray-900">1. 選擇年份</h3>
+                </div>
+                <button onclick="closeWizard()" class="text-notion-muted hover:text-notion-text p-1 rounded-md hover:bg-gray-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+
+            <div class="p-5 overflow-y-auto modal-content bg-white grow">
+                <div id="step-1" class="grid grid-cols-2 gap-3 hidden">
+                    <!-- 年份按鈕動態生成 -->
+                </div>
+                <div id="step-2" class="flex flex-col gap-3 hidden">
+                    <div class="text-sm text-notion-muted mb-1 px-1">請點擊科目登錄成績 (至少填一科即可儲存)：</div>
+                    <div id="subject-list" class="flex flex-col gap-2"></div>
+                </div>
+                <div id="step-3" class="hidden">
+                    <div class="text-sm text-notion-muted mb-3 px-1">選擇 <span id="current-subject-name" class="font-bold text-notion-text"></span> 的等級：</div>
+                    <div id="grade-list" class="grid grid-cols-2 gap-3"></div>
+                </div>
+            </div>
+
+            <div id="wizard-footer" class="p-5 border-t border-notion-divider bg-notion-bg hidden shrink-0">
+                <button id="wizard-save-btn" onclick="saveDraftRecord()" disabled class="w-full bg-[#2383E2] hover:bg-[#1A73CC] disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3 rounded-lg font-medium shadow-sm transition-colors text-base">
+                    確認儲存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 刪除確認 Modal -->
+    <div id="delete-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50 transition-opacity">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-[90%] max-w-sm transform scale-95 transition-transform duration-200" id="delete-modal-content">
+            <h3 class="text-lg font-bold mb-2 text-gray-900">確定要刪除嗎？</h3>
+            <p class="text-sm text-gray-500 mb-6">此動作無法復原。</p>
+            <div class="flex justify-end gap-3">
+                <button onclick="closeDeleteModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded text-sm font-medium">取消</button>
+                <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-medium">確定刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const LOCAL_STORAGE_KEY = 'cap_scores_data';
+        // 定義年份選單
+        const YEARS = ['103會考', '104會考', '105會考', '106會考', '107會考', '108會考', '109會考', '109補考', '110會考', '110補考', '111會考', '111補考', '112會考', '112陸考', '113會考', '114會考'];
+        const GRADES = ['A++', 'A+', 'A', 'B++', 'B+', 'B', 'C'];
+        const POINTS_MAP = { 'A++': 7, 'A+': 6, 'A': 5, 'B++': 4, 'B+': 3, 'B': 2, 'C': 1 };
+        const SUBJECTS = [
+            { id: 'chinese', name: '國文' },
+            { id: 'english', name: '英文' },
+            { id: 'math', name: '數學' },
+            { id: 'science', name: '自然' },
+            { id: 'social', name: '社會' }
+        ];
+
+        let records = [];
+        let deleteAction = null;
+        let currentStep = 0;
+        let draft = { year: null, scores: {} };
+        let activeSubjectId = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRecords();
+            updateUI();
+            initGradeButtons();
+        });
+
+        function initGradeButtons() {
+            const step3GradeList = document.getElementById('grade-list');
+            GRADES.forEach(grade => {
+                const btn = document.createElement('button');
+                let colorClass = "border-gray-200 text-gray-700 hover:bg-gray-50";
+                if(grade.includes('A')) colorClass = "border-green-300 text-green-800 bg-green-50 hover:bg-green-100";
+                else if(grade.includes('B')) colorClass = "border-blue-300 text-blue-800 bg-blue-50 hover:bg-blue-100";
+                else if(grade === 'C') colorClass = "border-red-300 text-red-800 bg-red-50 hover:bg-red-100";
+                btn.className = `p-4 border-2 rounded-lg font-bold text-lg active:scale-95 transition-transform ${colorClass}`;
+                btn.textContent = grade;
+                btn.onclick = () => selectGrade(grade);
+                step3GradeList.appendChild(btn);
+            });
+        }
+
+        // --- 核心排序函數 ---
+        function sortRecords(data) {
+            return data.sort((a, b) => {
+                const yearA = parseInt(a.year);
+                const yearB = parseInt(b.year);
+                if (yearA !== yearB) return yearA - yearB;
+                const getWeight = (yearStr) => {
+                    if (yearStr.includes('會考')) return 1;
+                    if (yearStr.includes('補考')) return 2;
+                    if (yearStr.includes('陸考')) return 3;
+                    return 4;
+                };
+                return getWeight(a.year) - getWeight(b.year);
+            });
+        }
+
+        function renderYearSelection() {
+            const step1 = document.getElementById('step-1');
+            step1.innerHTML = '';
+            const availableYears = YEARS.filter(y => {
+                const record = records.find(r => r.year === y);
+                if (!record) return true;
+                const filledCount = SUBJECTS.filter(s => record.scores[s.id] !== null).length;
+                return filledCount < 5;
+            });
+            if (availableYears.length === 0) {
+                step1.innerHTML = '<div class="col-span-2 text-center py-10 text-notion-muted">所有年份皆已登錄完成</div>';
+                return;
+            }
+            [...availableYears].reverse().forEach(year => {
+                const btn = document.createElement('button');
+                btn.className = "p-3 border border-notion-border rounded-lg bg-notion-bg hover:bg-gray-100 active:bg-gray-200 text-notion-text font-medium text-sm sm:text-base";
+                btn.textContent = year;
+                btn.onclick = () => selectYear(year);
+                step1.appendChild(btn);
+            });
+        }
+
+        function openWizard() {
+            draft = { year: null, scores: {} };
+            SUBJECTS.forEach(s => draft.scores[s.id] = null);
+            const modal = document.getElementById('wizard-modal');
+            const content = document.getElementById('wizard-content');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => content.classList.remove('translate-y-full'), 10);
+            renderYearSelection();
+            setStep(1);
+        }
+
+        function editRecord(year) {
+            draft.year = year;
+            const existing = records.find(r => r.year === year);
+            if (existing) {
+                draft.scores = { ...existing.scores };
+            } else {
+                SUBJECTS.forEach(s => draft.scores[s.id] = null);
+            }
+            const modal = document.getElementById('wizard-modal');
+            const content = document.getElementById('wizard-content');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => content.classList.remove('translate-y-full'), 10);
+            setStep(2);
+        }
+
+        function closeWizard() {
+            const modal = document.getElementById('wizard-modal');
+            const content = document.getElementById('wizard-content');
+            content.classList.add('translate-y-full');
+            setTimeout(() => { modal.classList.add('hidden'); modal.classList.remove('flex'); }, 300);
+        }
+
+        function setStep(step) {
+            currentStep = step;
+            document.getElementById('step-1').classList.add('hidden');
+            document.getElementById('step-2').classList.add('hidden');
+            document.getElementById('step-3').classList.add('hidden');
+            const backBtn = document.getElementById('wizard-back-btn');
+            const title = document.getElementById('wizard-title');
+            const footer = document.getElementById('wizard-footer');
+            if (step === 1) {
+                document.getElementById('step-1').classList.remove('hidden');
+                document.getElementById('step-1').classList.add('grid');
+                backBtn.classList.add('hidden');
+                footer.classList.add('hidden');
+                title.textContent = "1. 選擇年份";
+            } else if (step === 2) {
+                renderSubjectsList();
+                document.getElementById('step-2').classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                footer.classList.remove('hidden');
+                title.textContent = `2. 登錄科目 (${draft.year})`;
+                const someFilled = SUBJECTS.some(s => draft.scores[s.id] !== null);
+                document.getElementById('wizard-save-btn').disabled = !someFilled;
+            } else if (step === 3) {
+                document.getElementById('step-3').classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                footer.classList.add('hidden');
+                const subjName = SUBJECTS.find(s => s.id === activeSubjectId).name;
+                document.getElementById('current-subject-name').textContent = subjName;
+                title.textContent = `3. 選擇等級`;
+            }
+        }
+
+        function wizardBack() { if (currentStep === 2) setStep(1); else if (currentStep === 3) setStep(2); }
+        function selectYear(year) {
+            draft.year = year;
+            const existing = records.find(r => r.year === year);
+            if (existing) { draft.scores = { ...existing.scores }; } else { SUBJECTS.forEach(s => draft.scores[s.id] = null); }
+            setStep(2);
+        }
+        function selectSubject(subjId) { activeSubjectId = subjId; setStep(3); }
+        function selectGrade(grade) {
+            draft.scores[activeSubjectId] = grade;
+            showToast(`${SUBJECTS.find(s=>s.id === activeSubjectId).name} 已記錄：${grade}`);
+            setStep(2);
+        }
+
+        function renderSubjectsList() {
+            const listContainer = document.getElementById('subject-list');
+            listContainer.innerHTML = '';
+            SUBJECTS.forEach(subj => {
+                const score = draft.scores[subj.id];
+                const btn = document.createElement('button');
+                btn.className = "flex items-center justify-between p-4 border rounded-lg active:bg-gray-100 transition-colors w-full bg-white";
+                if (score) {
+                    btn.classList.add('border-green-200', 'bg-green-50/30');
+                    let badgeColor = score.includes('A') ? "bg-green-100 text-green-800 border-green-200" : score.includes('B') ? "bg-blue-100 text-blue-800 border-blue-200" : "bg-red-100 text-red-800 border-red-200";
+                    btn.innerHTML = `<span class="font-medium">${subj.name}</span><span class="px-3 py-1 rounded text-sm font-bold border ${badgeColor}">${score}</span>`;
+                } else {
+                    btn.classList.add('border-notion-border');
+                    btn.innerHTML = `<span class="font-medium">${subj.name}</span><span class="text-sm text-gray-400 font-medium">尚未登錄 ></span>`;
+                }
+                btn.onclick = () => selectSubject(subj.id);
+                listContainer.appendChild(btn);
+            });
+        }
+
+        function saveDraftRecord() {
+            let totalPoints = 0;
+            for (let subj in draft.scores) { if (draft.scores[subj]) { totalPoints += POINTS_MAP[draft.scores[subj]]; } }
+            records = records.filter(r => r.year !== draft.year);
+            records.push({ id: Date.now().toString(), year: draft.year, scores: { ...draft.scores }, totalPoints, createdAt: new Date().toISOString() });
+            records = sortRecords(records);
+            persistRecords();
+            updateUI();
+            closeWizard();
+            showToast(`✅ ${draft.year} 成績已更新。`);
+        }
+
+        function loadRecords() {
+            const data = localStorage.getItem(LOCAL_STORAGE_KEY);
+            if (data) { try { records = sortRecords(JSON.parse(data)); } catch (e) { records = []; } }
+        }
+        function persistRecords() { localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(records)); }
+        function updateUI() { renderTable(); renderWeaknessAnalysis(); }
+
+        function renderTable() {
+            const tbody = document.getElementById('records-table-body');
+            const emptyState = document.getElementById('empty-state');
+            const tableElement = tbody.parentElement;
+            tbody.innerHTML = '';
+            if (records.length === 0) { tableElement.classList.add('hidden'); emptyState.classList.replace('hidden', 'flex'); return; }
+            tableElement.classList.remove('hidden');
+            emptyState.classList.replace('flex', 'hidden');
+            records.forEach(record => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-notion-hover transition-colors";
+                const getScoreBadge = (score) => {
+                    if(!score) return '<span class="text-gray-300">-</span>';
+                    let colorClass = score.includes('A') ? "text-green-700 font-bold" : score.includes('B') ? "text-blue-700 font-medium" : "text-red-700 font-medium";
+                    return `<span class="${colorClass}">${score}</span>`;
+                };
+                tr.innerHTML = `
+                    <td class="p-3 sm:p-4 font-medium">${record.year}</td>
+                    <td class="p-3 sm:p-4">${getScoreBadge(record.scores.chinese)}</td>
+                    <td class="p-3 sm:p-4">${getScoreBadge(record.scores.english)}</td>
+                    <td class="p-3 sm:p-4">${getScoreBadge(record.scores.math)}</td>
+                    <td class="p-3 sm:p-4">${getScoreBadge(record.scores.science)}</td>
+                    <td class="p-3 sm:p-4">${getScoreBadge(record.scores.social)}</td>
+                    <td class="p-3 sm:p-4 font-bold text-lg">${record.totalPoints}</td>
+                    <td class="p-3 sm:p-4 text-center">
+                        <div class="flex items-center justify-center gap-1">
+                            <button onclick="editRecord('${record.year}')" class="text-notion-muted hover:text-[#2383E2] p-2 rounded hover:bg-blue-50"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>
+                            <button onclick="confirmDeleteRecord('${record.id}')" class="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button>
+                        </div>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderWeaknessAnalysis() {
+            const weaknessSpan = document.getElementById('weakness-subject');
+            if (records.length === 0) { weaknessSpan.textContent = '尚無資料'; return; }
+            let totals = { chinese: 0, english: 0, math: 0, science: 0, social: 0 }, counts = { chinese: 0, english: 0, math: 0, science: 0, social: 0 };
+            records.forEach(r => { for (let subj in totals) { if (r.scores[subj]) { totals[subj] += POINTS_MAP[r.scores[subj]]; counts[subj]++; } } });
+            let minAvg = Infinity, weakSubjKey = '';
+            for (let subj in totals) { if (counts[subj] > 0) { let avg = totals[subj] / counts[subj]; if (avg < minAvg) { minAvg = avg; weakSubjKey = subj; } } }
+            if (weakSubjKey) { weaknessSpan.innerHTML = `<strong>${SUBJECTS.find(s => s.id === weakSubjKey).name}</strong> <span class="opacity-80 text-xs ml-1">(平均: ${minAvg.toFixed(1)})</span>`; } 
+            else { weaknessSpan.textContent = '尚無資料'; }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').textContent = message;
+            toast.classList.replace('opacity-0', 'opacity-100');
+            toast.classList.remove('pointer-events-none');
+            setTimeout(() => { toast.classList.replace('opacity-100', 'opacity-0'); toast.classList.add('pointer-events-none'); }, 2000);
+        }
+
+        function openDeleteModal(actionCallback) {
+            const modal = document.getElementById('delete-modal');
+            deleteAction = actionCallback;
+            modal.classList.replace('hidden', 'flex');
+            requestAnimationFrame(() => document.getElementById('delete-modal-content').classList.replace('scale-95', 'scale-100'));
+            document.getElementById('confirm-delete-btn').onclick = () => { if(deleteAction) deleteAction(); closeDeleteModal(); };
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal-content').classList.replace('scale-100', 'scale-95');
+            setTimeout(() => { document.getElementById('delete-modal').classList.replace('flex', 'hidden'); deleteAction = null; }, 200);
+        }
+
+        function confirmDeleteRecord(id) { openDeleteModal(() => { records = records.filter(record => record.id !== id); persistRecords(); updateUI(); showToast('已刪除紀錄。'); }); }
+        function clearAllRecords() { if(records.length === 0) return; openDeleteModal(() => { records = []; persistRecords(); updateUI(); showToast('已清空所有紀錄'); }); }
+
+        // --- Excel 匯出邏輯 ---
+        function exportToExcel() {
+            if (records.length === 0) {
+                showToast('❌ 目前沒有資料可以匯出');
+                return;
+            }
+
+            // 準備數據
+            const excelData = records.map(r => ({
+                '考試年份': r.year,
+                '國文': r.scores.chinese || '-',
+                '英文': r.scores.english || '-',
+                '數學': r.scores.math || '-',
+                '自然': r.scores.science || '-',
+                '社會': r.scores.social || '-',
+                '總積分': r.totalPoints
+            }));
+
+            // 創建工作表
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "會考成績紀錄");
+
+            // 調整欄寬
+            const wscols = [
+                {wch: 12}, // 年份
+                {wch: 8},  // 國
+                {wch: 8},  // 英
+                {wch: 8},  // 數
+                {wch: 8},  // 自
+                {wch: 8},  // 社
+                {wch: 10}  // 總
+            ];
+            worksheet['!cols'] = wscols;
+
+            // 產生檔案名稱 (日期格式化)
+            const dateStr = new Date().toISOString().split('T')[0];
+            const fileName = `會考成績紀錄_${dateStr}.xlsx`;
+
+            // 下載檔案
+            XLSX.writeFile(workbook, fileName);
+            showToast('✅ Excel 檔案已匯出');
+        }
+    </script>
+</body>
+</html>
