@@ -13,7 +13,7 @@
 
 ## 🚀 快速開始
 
-1. **線上使用**：https://brent1101yt.github.io/CAPDRADE_upload/
+1. **線上使用**：https://brent1101yt.github.io/CAPGRADE_upload/
 2. **本地執行**：
    - 下載本專案的 `index.html`。
    - 直接用瀏覽器開啟即可使用，無需安裝任何伺服器環境。
